@@ -5,11 +5,11 @@ from setuptools import setup, find_packages
 
 HERE = pathlib.Path(__file__).parent
 
-VERSION = '0.2.0'
+VERSION = '0.3.0'
 PACKAGE_NAME = 'FuzzyTM'
 AUTHOR = 'Emil Rijcken'
 AUTHOR_EMAIL = 'emil.rijcken@gmail.com'
-URL = 'https://github.com/ERijck/FLSA'
+URL = 'https://github.com/ERijck/FuzzyTM'
 
 LICENSE = 'GNU General Public License v2.0'
 DESCRIPTION = 'A Python package for Fuzzy Topic Models'

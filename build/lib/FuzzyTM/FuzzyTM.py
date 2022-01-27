@@ -916,8 +916,6 @@ class FLSA_V(FuzzyTM):
             raise ValueError("map_file has no 'id' column")
             
         self.filtered_input = self.get_filtered_input(self.input_file, self.map_file)
-        self.map_file = self.filter_map_file(self.map_file, self.filtered_input)
-        
         super().__init__(algorithm = 'flsa-v', 
                          input_file=self.filtered_input, 
                          num_topics=num_topics, 
@@ -943,31 +941,6 @@ class FLSA_V(FuzzyTM):
         for doc in input_file:
             filtered_input_file.append(list(np.intersect1d(map_file['id'], doc)))
         return filtered_input_file
-
-    def filter_map_file(self, map_file, filtered_input):
-        '''
-        Function to reduce words in map_file
-
-        Parameters
-        ----------
-        map_file : pd.DataFrame
-        filtered_input : list of lists of strings
-
-        Returns: 
-        -------
-        pd.DataFrame
-            DESCRIPTION.
-
-        '''
-        map_words = [word for word in map_file['label']]
-        filtered_set = set()
-        for text in filtered_input:
-            filtered_set.update(set(text))
-        filtered_list = list(filtered_set)
-
-        intersect = list(np.intersect1d(map_words, filtered_list))
-
-        return map_file[map_file.label.isin(intersect)]
 
         
     def get_coordinates_from_map_file(self, map_file, vocab):

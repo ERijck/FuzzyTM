@@ -47,7 +47,6 @@ class FuzzyTM():
         self._prob_word_i = None
         self._prob_document_j = None
         self._prob_topic_k = None
-        self._prob_document_given_topic = None
         self._prob_word_given_topic = None
         self._prob_word_given_document = None
         self._prob_topic_given_document = None
@@ -742,10 +741,10 @@ class FuzzyTM():
                 )
         if algorithm == 'flsa':
             prob_document_and_topic = (prob_topic_given_document_transpose.T * self._prob_document_j).T
-            self._prob_document_given_topic = prob_document_and_topic / prob_document_and_topic.sum(axis=0)
+            prob_document_given_topic = prob_document_and_topic / prob_document_and_topic.sum(axis=0)
             self._prob_word_given_document = np.asarray(global_term_weights / global_term_weights.sum(1))
             self._prob_word_given_topic = np.matmul(
-                self._prob_word_given_document.T, self._prob_document_given_topic,
+                self._prob_word_given_document.T, prob_document_given_topic,
                 )
             self._prob_topic_given_document = prob_topic_given_document_transpose.T
             return self._prob_word_given_topic, self._prob_topic_given_document
@@ -761,9 +760,9 @@ class FuzzyTM():
                 self._prob_word_given_document = np.asarray(local_term_weights / local_term_weights.sum(1)).T
             prob_document_given_word = ((self._prob_word_given_document*self._prob_document_j).T /
                                         np.array(self._prob_word_i))
-            self._prob_document_given_topic = np.matmul(prob_document_given_word,
+            prob_document_given_topic = np.matmul(prob_document_given_word,
                                                         self._prob_word_given_topic)
-            self._prob_topic_given_document = ((self._prob_document_given_topic * self._prob_topic_k).T/
+            self._prob_topic_given_document = ((prob_document_given_topic * self._prob_topic_k).T/
                                                self._prob_document_j)
             return self._prob_word_given_topic, self._prob_topic_given_document
         raise ValueError('"algorithm" is unknown.')

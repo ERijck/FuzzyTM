@@ -49,7 +49,6 @@ class FuzzyTM():
         self._prob_topic_k = None
         self._prob_word_given_topic = None
         self._prob_word_given_document = None
-        self._prob_topic_given_document = None
         self.coherence = None
         self.diversity_score = None
 
@@ -746,8 +745,8 @@ class FuzzyTM():
             self._prob_word_given_topic = np.matmul(
                 self._prob_word_given_document.T, prob_document_given_topic,
                 )
-            self._prob_topic_given_document = prob_topic_given_document_transpose.T
-            return self._prob_word_given_topic, self._prob_topic_given_document
+            prob_topic_given_document = prob_topic_given_document_transpose.T
+            return self._prob_word_given_topic, prob_topic_given_document
 
         elif algorithm in [
                 'flsa-w','flsa-v',
@@ -762,9 +761,9 @@ class FuzzyTM():
                                         np.array(self._prob_word_i))
             prob_document_given_topic = np.matmul(prob_document_given_word,
                                                         self._prob_word_given_topic)
-            self._prob_topic_given_document = ((prob_document_given_topic * self._prob_topic_k).T/
+            prob_topic_given_document = ((prob_document_given_topic * self._prob_topic_k).T/
                                                self._prob_document_j)
-            return self._prob_word_given_topic, self._prob_topic_given_document
+            return self._prob_word_given_topic, prob_topic_given_document
         raise ValueError('"algorithm" is unknown.')
 
     def show_topics(

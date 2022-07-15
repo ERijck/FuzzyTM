@@ -870,18 +870,18 @@ class FuzzyTM():
             raise ValueError(method, "is not a valid option for 'method'.",
                              " Choose either 'topn' or 'percentile'")
         if method == 'topn':
-            create_weights = self._create_dictlist_topn(
+            dictlist = self._create_dictlist_topn(
                 topn, prob_word_given_topic, self._index_to_word,
                 )
         else:
-            create_weights = self._create_dictlist_percentile(
+            dictlist = self._create_dictlist_percentile(
                 perc, prob_word_given_topic, self._index_to_word,
                 )
         for doc in input_file:
             topic_weights = [0] * prob_word_given_topic.shape[1]
             for word in doc:
                 for i in range(prob_word_given_topic.shape[1]):
-                    topic_weights[i] += create_weights[i].get(word, 0)
+                    topic_weights[i] += dictlist[i].get(word, 0)
             top_dist.append(topic_weights)
         return np.array(top_dist)
 
@@ -890,7 +890,7 @@ class FuzzyTM():
             topn, prob_word_given_topic, index_to_word,
             ):
         """
-        Create a list with dictionaries of word probabilities per topic based on the top-n words.
+        Creates a list with dictionaries of word probabilities per topic based on the top-n words.
 
         Parameters
         ----------
@@ -1055,7 +1055,7 @@ class FuzzyTM():
             self.diversity_score = self.get_diversity_score(topics)
         return self.coherence * self.diversity_score
 
-class Flsa(FuzzyTM):
+class FLSA(FuzzyTM):
     """
     Algorithm to run the FLSA algorithm (see: https://tinyurl.com/mskjaeuu).
     
@@ -1120,7 +1120,7 @@ class Flsa(FuzzyTM):
             global_term_weights = sparse_global_term_weighting,
             )
 
-class FlsaW(FuzzyTM):
+class FLSA_W(FuzzyTM):
     """
     Class to train the FLSA-W algorithm.
 
@@ -1188,7 +1188,7 @@ class FlsaW(FuzzyTM):
             global_term_weights = sparse_global_term_weighting,
             )
 
-class FlsaV(FuzzyTM):
+class FLSA_V(FuzzyTM):
     """
     Class to train the FLSA-V algorithm.
 

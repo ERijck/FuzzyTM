@@ -9,7 +9,8 @@ from collections import Counter
 import warnings
 import numpy as np
 import pandas as pd
-from sparsesvd import sparsesvd
+#from sparsesvd import sparsesvd
+from scipy.sparse.linalg import svds
 from scipy.sparse import dok_matrix
 from pyfume import Clustering
 import gensim.corpora as corpora
@@ -532,7 +533,7 @@ class FuzzyTM():
                 binary_sparse_dtm[doc_index,
                                   word_to_index[word]] = binary_document_counter[word]
         return binary_sparse_dtm
-
+    
     @staticmethod
     def _create_projected_data(
             algorithm, sparse_weighted_matrix, svd_factors,
@@ -556,15 +557,16 @@ class FuzzyTM():
         -------
             numpy.array : float
         """
-        svd_u_transpose, _, svd_v = sparsesvd(
+        svd_u, _, svd_v = svds(
             sparse_weighted_matrix, svd_factors,
             )
         if algorithm == 'flsa':
-            return svd_u_transpose.T
+            return svd_u
         if algorithm == 'flsa-w':
             return svd_v.T
         raise ValueError('Invalid algorithm selected.',
                          'Only "flsa" ans "flsa-w" are currently supported.')
+
 
     @staticmethod
     def _create_partition_matrix(
@@ -1346,4 +1348,3 @@ class FLSA_V(FuzzyTM):
             algorithm='flsa-v', prob_topic_given_word_transpose = partition_matrix,
             local_term_weights = sparse_document_term_matrix,
             )
-    

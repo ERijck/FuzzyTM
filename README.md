@@ -37,8 +37,13 @@ The original FLSA approach aims to find clusters in the projected space of docum
 ### FLSA-W
 Documents might contain multiple topics, making them difficult to cluster. Therefore, it might makes more sense to cluster on words instead of documents. That is what what we do with FLSA-W(ords). 
 
+### FLSA-E
+Trains a Word2Vec word embedding from the corpus. Then clusters in this embedding space to find topics. 
+
 ### FLSA-V
 FLSA-W clusters on a projected space of words and implicitly assumes that the projections ensure that related words are located nearby each other. However, there is no optimization algorithm that ensures this is the case. With FLSA-V(os), we use the output from [Vosviewer](https://www.vosviewer.com/) as input to our model. Vosviewer is an open-source software tool used for bibliographic mapping that optimizes its projections such that related words are located nearby each other. Using Vosviewer's output, FLSA-V's calculations start with step 4 (yet, step 1 is used for calculating some probabilities). 
+
+
 
 ## Getting started
 Many parameters have default settings, so that the algorithms can be called only setting the following two variables:

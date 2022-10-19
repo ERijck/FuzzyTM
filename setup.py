@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 HERE = pathlib.Path(__file__).parent
 
-VERSION = '1.0.0'
+VERSION = '2.0.0'
 PACKAGE_NAME = 'FuzzyTM'
 AUTHOR = 'Emil Rijcken'
 AUTHOR_EMAIL = 'emil.rijcken@gmail.com'
@@ -20,7 +20,8 @@ INSTALL_REQUIRES = [
       'numpy',
       'pandas',
       'scipy',
-      'pyfume'
+      'pyfume',
+      'pickle',
 ]
 
 setup(name=PACKAGE_NAME,

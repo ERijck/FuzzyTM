@@ -9,23 +9,31 @@ from collections import Counter
 import warnings
 import numpy as np
 import pandas as pd
-#from sparsesvd import sparsesvd
 from scipy.sparse.linalg import svds
 from scipy.sparse import dok_matrix
 from pyfume import Clustering
 import gensim.corpora as corpora
 from gensim.models.coherencemodel import CoherenceModel
+from gensim.models import Word2Vec
+import pickle
 
 class FuzzyTM():
     """
     Parent class to train various FLSA-based topic models.
     """
     def __init__(
-            self, input_file, num_topics = 15, num_words = 20,
-            word_weighting = 'normal', cluster_method = 'fcm', svd_factors = 2,
+            self, 
+            input_file, 
+            num_topics = 15, 
+            algorithm = 'flsa-w', 
+            num_words = 10,
+            word_weighting = 'normal', 
+            cluster_method = 'fcm', 
+            svd_factors = 2,
             ):
         self._input_file = input_file #List in which each element is a list of tokens
         self._check_format_input_data()
+        self.algorithm = algorithm,
         self._num_topics = num_topics
         self._num_words = num_words
         self._word_weighting = word_weighting
@@ -35,8 +43,17 @@ class FuzzyTM():
             raise ValueError("Please use a positive int for num_topics")
         if not isinstance(self._num_words, int) or self._num_words <1 :
             raise ValueError("Please use a positive int for num_words")
+        if self.algorithm in ["flsa", "flsa-w"] and self.word_weighting not in [
+                "entropy",
+                "idf",
+                "normal",
+                "probidf",
+                ]:
+            raise ValueError("Invalid word weighting method. Please choose between: 'entropy','idf','normal' and'probidf'")
         if self._cluster_method not in [
-                "fcm", "fst-pso","gk",
+                "fcm", 
+                "fst-pso",
+                "gk",
                 ]:
             raise ValueError(
                 "Invalid 'cluster_method. Please choose: 'fcm', 'fst-pso' or 'gk'")
@@ -50,7 +67,7 @@ class FuzzyTM():
         self._prob_topic_k = None
         self._prob_word_given_topic = None
         self._prob_word_given_document = None
-        self.coherence = None
+        self.coherence_score = None
         self.diversity_score = None
 
     def _check_format_input_data(self):
@@ -265,7 +282,9 @@ class FuzzyTM():
                 sparse matrix representation of the local term weights.
         """
         sparse_local_term_weights = dok_matrix(
-            (len(input_file),vocabulary_size), dtype=np.float32,
+            (len(input_file),
+             vocabulary_size),
+            dtype=np.float32,
             )
         for document_index, document in enumerate(input_file):
             document_counter = Counter(document)
@@ -276,9 +295,14 @@ class FuzzyTM():
         return sparse_local_term_weights
 
     def _create_sparse_global_term_weights(
-            self, input_file, word_weighting, vocabulary_size=None,
-            sparse_local_term_weights=None, index_to_word=None,
-            word_to_index=None, sum_words=None,
+            self,
+            input_file,
+            word_weighting,
+            vocabulary_size=None,
+            sparse_local_term_weights=None,
+            index_to_word=None,
+            word_to_index=None,
+            sum_words=None,
             ):
         """
         Apply a word_weighting method on the sparse_local_term_weights
@@ -328,26 +352,38 @@ class FuzzyTM():
                 raise ValueError("Please feed the algorithm 'word_to_index'")
         if word_weighting ==  'entropy':
             global_term_weights = self._calculate_entropy(
-                num_documents, vocabulary_size, sparse_local_term_weights,
+                num_documents,
+                vocabulary_size,
+                sparse_local_term_weights,
                 index_to_word, sum_words,
                 )
         elif word_weighting == 'idf':
             global_term_weights = self._calculate_idf(
-                num_documents, vocabulary_size, input_file, word_to_index,
+                num_documents,
+                vocabulary_size,
+                input_file,
+                word_to_index,
                 )
         elif word_weighting == 'normal':
             global_term_weights = self._calculate_normal(sparse_local_term_weights)
         elif word_weighting == 'probidf':
             global_term_weights = self._calculate_probidf(
-                num_documents, vocabulary_size, input_file, word_to_index,
+                num_documents,
+                vocabulary_size,
+                input_file,
+                word_to_index,
                 )
         else:
             raise ValueError('Invalid word weighting method')
         return sparse_local_term_weights.multiply(global_term_weights).tocsc()
 
     def _calculate_entropy(
-            self, num_documents, vocabulary_size, sparse_local_term_weights,
-            index_to_word, sum_words,
+            self,
+            num_documents,
+            vocabulary_size,
+            sparse_local_term_weights,
+            index_to_word,
+            sum_words,
             ):
         """
         Use the entropy word weighting method.
@@ -372,14 +408,21 @@ class FuzzyTM():
             numpy.array : float
         """
         p_log_p_ij = self._create_p_log_p_ij(
-            num_documents, vocabulary_size, sparse_local_term_weights,
-            index_to_word, sum_words,
+            num_documents,
+            vocabulary_size,
+            sparse_local_term_weights,
+            index_to_word,
+            sum_words,
             )
         summed_p_log_p = p_log_p_ij.sum(0).tolist()[0]
         return np.array([1+ summed_p_log_p_i /np.log2(num_documents) for summed_p_log_p_i in summed_p_log_p])
 
     def _calculate_idf(
-            self, num_documents, vocabulary_size, input_file, word_to_index,
+            self,
+            num_documents,
+            vocabulary_size,
+            input_file,
+            word_to_index,
             ):
         """
         Use the idf word weightingg method.
@@ -402,7 +445,10 @@ class FuzzyTM():
             numpy.array : float
         """
         binary_sparse_dtm = self._create_sparse_binary_dtm(
-            num_documents, vocabulary_size, input_file, word_to_index,
+            num_documents,
+            vocabulary_size,
+            input_file,
+            word_to_index,
             )
         summed_words = binary_sparse_dtm.sum(0).tolist()[0]
         return np.array([np.log2(num_documents/word_count) for word_count in summed_words])
@@ -430,7 +476,11 @@ class FuzzyTM():
         return np.array([1/(math.sqrt(word_count)) for word_count in summed_words])
 
     def _calculate_probidf (
-            self, num_documents, vocabulary_size, input_file, word_to_index,
+            self,
+            num_documents,
+            vocabulary_size,
+            input_file,
+            word_to_index,
             ):
         """
         Use the probidf word weightingg method.
@@ -453,7 +503,10 @@ class FuzzyTM():
             numpy.array : float
         """
         binary_sparse_dtm = self._create_sparse_binary_dtm(
-            num_documents, vocabulary_size, input_file, word_to_index,
+            num_documents,
+            vocabulary_size,
+            input_file,
+            word_to_index,
             )
         summed_binary_words_list = binary_sparse_dtm.sum(0).tolist()[0]
 
@@ -462,8 +515,11 @@ class FuzzyTM():
 
     @staticmethod
     def _create_p_log_p_ij (
-            num_documents,vocabulary_size, sparse_local_term_weights,
-            index_to_word, sum_words
+            num_documents,
+            vocabulary_size,
+            sparse_local_term_weights,
+            index_to_word,
+            sum_words,
             ):
         """
         Create probability of word i in document j, multiplied by its base-2 logarithm.
@@ -502,7 +558,10 @@ class FuzzyTM():
 
     @staticmethod
     def _create_sparse_binary_dtm(
-            num_documents, vocabulary_size, input_file, word_to_index,
+            num_documents,
+            vocabulary_size,
+            input_file,
+            word_to_index,
             ):
         """
         Create a binary sparse document-term-matrix (used for idf and probidf).
@@ -525,7 +584,7 @@ class FuzzyTM():
              scipy.sparse.dok_matrix
         """
         binary_sparse_dtm = dok_matrix(
-            (num_documents, vocabulary_size), dtype=np.float32,
+            (num_documents,vocabulary_size), dtype=np.float32,
             )
         for doc_index, document in enumerate(input_file):
             binary_document_counter = dict.fromkeys(document, 1)
@@ -536,7 +595,9 @@ class FuzzyTM():
     
     @staticmethod
     def _create_projected_data(
-            algorithm, sparse_weighted_matrix, svd_factors,
+            algorithm,
+            sparse_weighted_matrix,
+            svd_factors,
             ):
         """
         Perform singular decomposition for dimensionality reduction.
@@ -558,11 +619,12 @@ class FuzzyTM():
             numpy.array : float
         """
         svd_u, _, svd_v = svds(
-            sparse_weighted_matrix, svd_factors,
+            sparse_weighted_matrix,
+            svd_factors,
             )
-        if algorithm == 'flsa':
+        if algorithm in ['flsa']:
             return svd_u
-        if algorithm == 'flsa-w':
+        if algorithm in ['flsa-w']:
             return svd_v.T
         raise ValueError('Invalid algorithm selected.',
                          'Only "flsa" ans "flsa-w" are currently supported.')
@@ -570,7 +632,9 @@ class FuzzyTM():
 
     @staticmethod
     def _create_partition_matrix(
-            data, number_of_clusters, method = 'fcm',
+            data,
+            number_of_clusters,
+            method = 'fcm',
             ):
         """
         Perform clustering on the projected data.
@@ -590,7 +654,10 @@ class FuzzyTM():
         -------
             numpy.array : float
         """
-        clusterer = Clustering.Clusterer(nr_clus = number_of_clusters, data= data)
+        clusterer = Clustering.Clusterer(
+            nr_clus = number_of_clusters,
+            data= data,
+            )
         _, partition_matrix, _ = clusterer.cluster(method= method)
         return partition_matrix
 
@@ -638,7 +705,8 @@ class FuzzyTM():
 
     @staticmethod
     def _create_prob_topic_k(
-            prob_topic_given_word_transpose, prob_word_i,
+            prob_topic_given_word_transpose,
+            prob_word_i,
             ):
         """
         Get the probability of topic k.
@@ -659,38 +727,46 @@ class FuzzyTM():
 
     @staticmethod
     def _check_passed_variables(
-            algorithm, prob_topic_given_document_transpose,
-            prob_topic_given_word_transpose, local_term_weights,
+            algorithm,
+            prob_topic_given_document_transpose,
+            prob_topic_given_word_transpose,
+            local_term_weights,
             global_term_weights,
             ):
         """
         Check whether the algorithms are being fed the right attributes.
         """
-        if algorithm == 'flsa':
+        if algorithm in ['flsa']:
             if prob_topic_given_document_transpose is None:
                 raise ValueError("Please feed the method",
                                  "'prob_topic_given_document_transpose' to run flsa")
             if global_term_weights is None:
                 raise ValueError("Please feed the method 'global_term_weights', to run flsa")
-        elif algorithm == 'flsa-w':
+        elif algorithm in ['flsa-w']:
             if prob_topic_given_word_transpose is None:
                 raise ValueError("Please feed the method",
                                  "'prob_topic_given_word_transpose' to run flsa-w")
             if global_term_weights is None:
                 raise ValueError("Please feed the method 'global_term_weights'",
                                  " to run flsa-w")
-        elif algorithm == 'flsa-v':
+        elif algorithm in ['flsa-v',
+                           'flsa-e',
+                           ]:
             if prob_topic_given_word_transpose is None:
                 raise ValueError("Please feed the method",
                                  "'prob_topic_given_word_transpose' to run flsa-v")
             if local_term_weights is None:
                 raise ValueError("Please feed the method 'local_term_weights', to run flsa-v")
+        
         else:
             raise ValueError('Your algorithm is currently not supported')
 
     def _create_probability_matrices(
-            self, algorithm, prob_topic_given_document_transpose = None,
-            prob_topic_given_word_transpose = None, local_term_weights = None,
+            self, 
+            algorithm, 
+            prob_topic_given_document_transpose = None,
+            prob_topic_given_word_transpose = None, 
+            local_term_weights = None,
             global_term_weights = None,
             ):
         """
@@ -719,57 +795,72 @@ class FuzzyTM():
         """
         #Chech whether the right variable are passed into the method.
         self._check_passed_variables(
-            algorithm, prob_topic_given_document_transpose,
-            prob_topic_given_word_transpose, local_term_weights,
+            algorithm,
+            prob_topic_given_document_transpose,
+            prob_topic_given_word_transpose,
+            local_term_weights,
             global_term_weights,
             )
 
         #Calculate the initial probabilities
         if algorithm in [
-                'flsa','flsa-w',
+                'flsa',
+                'flsa-w',
                 ]:
             self._prob_word_i = self._create_prob_word_i(global_term_weights)
             self._prob_document_j = self._create_prob_document_j(global_term_weights)
-            if algorithm == 'flsa-w':
+            if algorithm in ['flsa-w']:
                 self._prob_topic_k = self._create_prob_topic_k(
-                    prob_topic_given_word_transpose, self._prob_word_i,
+                    prob_topic_given_word_transpose, 
+                    self._prob_word_i,
                     )
-        elif algorithm == 'flsa-v':
+        elif algorithm in ['flsa-v',
+                           'flsa-e',
+                           ]:
             self._prob_word_i = self._create_prob_word_i(local_term_weights)
             self._prob_document_j = self._create_prob_document_j(local_term_weights)
             self._prob_topic_k = self._create_prob_topic_k(
                 prob_topic_given_word_transpose, self._prob_word_i,
                 )
-        if algorithm == 'flsa':
+        if algorithm in ['flsa']:
             prob_document_and_topic = (prob_topic_given_document_transpose.T * self._prob_document_j).T
             prob_document_given_topic = prob_document_and_topic / prob_document_and_topic.sum(axis=0)
             self._prob_word_given_document = np.asarray(global_term_weights / global_term_weights.sum(1))
             self._prob_word_given_topic = np.matmul(
-                self._prob_word_given_document.T, prob_document_given_topic,
+                self._prob_word_given_document.T, 
+                prob_document_given_topic,
                 )
             prob_topic_given_document = prob_topic_given_document_transpose.T
             return self._prob_word_given_topic, prob_topic_given_document
 
         elif algorithm in [
-                'flsa-w','flsa-v',
+                'flsa-w',
+                'flsa-v',
+                'flsa-e'
                 ]:
             prob_word_and_topic = (prob_topic_given_word_transpose.T * self._prob_word_i).T
             self._prob_word_given_topic = prob_word_and_topic / prob_word_and_topic.sum(axis=0)
-            if algorithm == 'flsa-w':
+            if algorithm in ['flsa-w']:
                 self._prob_word_given_document = np.asarray(global_term_weights / global_term_weights.sum(1)).T
-            elif algorithm == 'flsa-v':
+            elif algorithm in ['flsa-v',
+                               'flsa-e',
+                               ]:
                 self._prob_word_given_document = np.asarray(local_term_weights / local_term_weights.sum(1)).T
             prob_document_given_word = ((self._prob_word_given_document*self._prob_document_j).T /
                                         np.array(self._prob_word_i))
-            prob_document_given_topic = np.matmul(prob_document_given_word,
-                                                        self._prob_word_given_topic)
+            prob_document_given_topic = np.matmul(
+                prob_document_given_word,
+                self._prob_word_given_topic,
+                )
             prob_topic_given_document = ((prob_document_given_topic * self._prob_topic_k).T/
                                                self._prob_document_j)
             return self._prob_word_given_topic, prob_topic_given_document
         raise ValueError('"algorithm" is unknown.')
 
     def show_topics(
-            self, prob_word_given_topic = None, num_words = -1,
+            self,
+            prob_word_given_topic = None, 
+            num_words = -1,
             index_to_word = None, representation = 'both',
             ):
         """
@@ -964,9 +1055,12 @@ class FuzzyTM():
                 i+=1
             top_list.append(new_dict)
         return top_list
-
+   
     def get_coherence_score(
-            self, input_file, topics, coherence = 'c_v',
+            self, 
+            input_file=None,
+            topics=None,
+            coherence = 'c_v',
             ):
         """
         Calculate the coherence score for the generated topic.
@@ -986,16 +1080,21 @@ class FuzzyTM():
              float
                  The coherence score.
         """
+        if input_file == None and topics == None:
+            input_file=self._input_file
+            topics=self.show_topics(representation='words')
+        
         id2word = corpora.Dictionary(input_file)
         corpus = [id2word.doc2bow(text) for text in input_file]
-        self.coherence = CoherenceModel(
+        self.coherence_score = CoherenceModel(
             topics=topics, texts = input_file, corpus=corpus,
             dictionary=id2word, coherence= coherence,
             topn=len(topics[0])).get_coherence()
-        return self.coherence
+        return self.coherence_score
 
     def get_diversity_score(
-            self, topics,
+            self,
+            topics=None,
             ):
         """''
         Calculate the diversity score for the generated topic.
@@ -1013,6 +1112,8 @@ class FuzzyTM():
              float
                  The diversity score.
         """
+        if topics == None:
+            topics = self.show_topics(representation='words')
         unique_words = set()
         total_words = 0
         for top in topics:
@@ -1022,7 +1123,10 @@ class FuzzyTM():
         return self.diversity_score
 
     def get_interpretability_score(
-            self, input_file, topics, coherence='c_v',
+            self, 
+            input_file=None, 
+            topics=None, 
+            coherence='c_v',
             ):
         """''
         Calculate the interpretability score for the generated topics.
@@ -1045,17 +1149,62 @@ class FuzzyTM():
              float
                  The interpretability score.
         """
-        try:
-            self.coherence
-        except AttributeError:
-            self.coherence = self.get_coherence_score(
-                input_file, topics, coherence,
+        if input_file == None and topics == None:
+            input_file=self._input_file
+            topics=self.show_topics(representation='words')
+        if self.coherence_score == None:
+            self.coherence_score = self.get_coherence_score(
+                input_file, 
+                topics, coherence,
                 )
-        try:
-            self.diversity_score
-        except AttributeError:
+        if self.diversity_score == None:
             self.diversity_score = self.get_diversity_score(topics)
-        return self.coherence * self.diversity_score
+        return self.coherence_score * self.diversity_score
+    
+    def save(
+            self,
+            filepath,
+            ):
+        """''
+        Saves the object to the drive, using the pickle library
+
+        Parameters
+        ----------
+             filepath : str
+                The directory in which the file should be stored,
+                either with or without 
+
+        Returns
+        -------
+             float
+                 The interpretability score.
+        """
+        if not isinstance(filepath, str):
+            raise ValueError('Make sure that "filepath" has type "str"')
+        if filepath.endswith('.pickle'):
+            pickle_out = open(filepath, 'wb')
+        elif filepath.endswith('/'):
+            pickle_out = open(filepath+'model.pickle', 'wb')
+        else:
+            pickle_out = open(filepath+'.pickle', 'wb')
+        pickle.dump(self, pickle_out)
+        pickle_out.close()
+
+    def load(
+            self,
+            filepath,
+            ):
+        if not isinstance(filepath, str):
+            raise ValueError('Make sure that "filepath" has type "str"')
+        if not filepath.endswith('.pickle'):
+            if filepath.endswith('/'):
+                filepath+='model.pickle'
+            else:
+                filepath+='/model.pickle'
+        infile = open(filepath,'rb')
+        self.__dict__ = pickle.load(infile).__dict__
+        infile.close()
+
 
 class FLSA(FuzzyTM):
     """
@@ -1081,12 +1230,21 @@ class FLSA(FuzzyTM):
                  The cluster algorithm to be used ('fcm', 'gk', 'fst-pso').
     """
     def __init__(
-            self, input_file, num_topics, num_words=20, word_weighting='normal',
-            svd_factors=2, cluster_method='fcm',):
+            self, 
+            input_file, 
+            num_topics, 
+            num_words=10, 
+            word_weighting='normal',
+            svd_factors=2, 
+            cluster_method='fcm',
+            ):
         super().__init__(
-            input_file=input_file, num_topics=num_topics,
-            num_words=num_words, word_weighting = word_weighting,
-            cluster_method=cluster_method, svd_factors=svd_factors,
+            input_file=input_file, 
+            num_topics=num_topics,
+            num_words=num_words, 
+            word_weighting = word_weighting,
+            cluster_method=cluster_method, 
+            svd_factors=svd_factors,
             )
 
     def get_matrices(self):
@@ -1101,24 +1259,32 @@ class FLSA(FuzzyTM):
                 The prbability of a topic given a document.
         """
         sparse_document_term_matrix = self._create_sparse_local_term_weights(
-            self._input_file, self._vocabulary_size, self._word_to_index,
+            self._input_file, 
+            self._vocabulary_size, 
+            self._word_to_index,
             )
         sparse_global_term_weighting = self._create_sparse_global_term_weights(
-            input_file = self._input_file, word_weighting = self._word_weighting,
-            vocabulary_size=self._vocabulary_size, sparse_local_term_weights = sparse_document_term_matrix,
-            index_to_word = self._index_to_word, word_to_index = self._word_to_index,
+            input_file = self._input_file, 
+            word_weighting = self._word_weighting,
+            vocabulary_size=self._vocabulary_size, 
+            sparse_local_term_weights = sparse_document_term_matrix,
+            index_to_word = self._index_to_word, 
+            word_to_index = self._word_to_index,
             sum_words = self._sum_words,
             )
         projected_data = self._create_projected_data(
-            algorithm = 'flsa', sparse_weighted_matrix = sparse_global_term_weighting,
+            algorithm = 'flsa', 
+            sparse_weighted_matrix = sparse_global_term_weighting,
             svd_factors = self._svd_factors,
             )
         partition_matrix = self._create_partition_matrix(
-            data = projected_data, number_of_clusters = self._num_topics,
+            data = projected_data, 
+            number_of_clusters = self._num_topics,
             method = self._cluster_method
             )
         return self._create_probability_matrices(
-            algorithm='flsa', prob_topic_given_document_transpose = partition_matrix,
+            algorithm='flsa', 
+            prob_topic_given_document_transpose = partition_matrix,
             global_term_weights = sparse_global_term_weighting,
             )
 
@@ -1148,13 +1314,22 @@ class FLSA_W(FuzzyTM):
                  The cluster algorithm to be used ('fcm', 'gk', 'fst-pso').
     """
     def __init__(
-            self, input_file, num_topics, num_words = 20,
-            word_weighting = 'normal', svd_factors = 2, cluster_method = 'fcm',
+            self, 
+            input_file, 
+            num_topics, 
+            num_words = 10,
+            word_weighting = 'normal', 
+            svd_factors = 2, 
+            cluster_method = 'fcm',
             ):
+        
         super().__init__(
-            input_file=input_file, num_topics=num_topics,
-            num_words=num_words, word_weighting = word_weighting,
-            cluster_method=cluster_method,svd_factors=svd_factors,
+            input_file=input_file, 
+            num_topics=num_topics,
+            num_words=num_words, 
+            word_weighting = word_weighting,
+            cluster_method=cluster_method,
+            svd_factors=svd_factors,
             )
 
     def get_matrices(self):
@@ -1169,24 +1344,32 @@ class FLSA_W(FuzzyTM):
                 The prbability of a topic given a document.
         """
         sparse_document_term_matrix = self._create_sparse_local_term_weights(
-            self._input_file, self._vocabulary_size, self._word_to_index,
+            self._input_file, 
+            self._vocabulary_size, 
+            self._word_to_index,
             )
         sparse_global_term_weighting = self._create_sparse_global_term_weights(
-            input_file = self._input_file, word_weighting = self._word_weighting,
-            vocabulary_size=self._vocabulary_size, sparse_local_term_weights = sparse_document_term_matrix,
-            index_to_word = self._index_to_word, word_to_index = self._word_to_index,
+            input_file = self._input_file, 
+            word_weighting = self._word_weighting,
+            vocabulary_size=self._vocabulary_size, 
+            sparse_local_term_weights = sparse_document_term_matrix,
+            index_to_word = self._index_to_word, 
+            word_to_index = self._word_to_index,
             sum_words = self._sum_words,
             )
         projected_data = self._create_projected_data(
-            algorithm = 'flsa-w', sparse_weighted_matrix = sparse_global_term_weighting,
+            algorithm = 'flsa-w', 
+            sparse_weighted_matrix = sparse_global_term_weighting,
             svd_factors = self._svd_factors,
             )
         partition_matrix = self._create_partition_matrix(
-            data = projected_data, number_of_clusters = self._num_topics,
+            data = projected_data, 
+            number_of_clusters = self._num_topics,
             method = self._cluster_method,
             )
         return self._create_probability_matrices(
-            algorithm='flsa-w', prob_topic_given_word_transpose = partition_matrix,
+            algorithm='flsa-w', 
+            prob_topic_given_word_transpose = partition_matrix,
             global_term_weights = sparse_global_term_weighting,
             )
 
@@ -1211,7 +1394,12 @@ class FLSA_V(FuzzyTM):
                  The cluster algorithm to be used ('fcm', 'gk', 'fst-pso').
     """
     def __init__(
-            self, input_file, map_file, num_topics, num_words = 20, cluster_method='fcm',
+            self, 
+            input_file, 
+            map_file, 
+            num_topics,
+            num_words = 10, 
+            cluster_method='fcm',
             ):
         self.map_file = map_file
         if not isinstance(self.map_file, pd.DataFrame):
@@ -1225,15 +1413,19 @@ class FLSA_V(FuzzyTM):
             raise ValueError("map_file has no 'id' column")
 
         self.filtered_input = self._get_filtered_input(
-            input_file, self.map_file,
+            input_file, 
+            self.map_file,
             )
         self.map_file = self._filter_map_file(
-            self.map_file, self.filtered_input,
+            self.map_file, 
+            self.filtered_input,
             )
 
         super().__init__(
-            input_file=self.filtered_input, num_topics=num_topics,
-            num_words=num_words, cluster_method=cluster_method,
+            input_file=self.filtered_input, 
+            num_topics=num_topics,
+            num_words=num_words, 
+            cluster_method=cluster_method,
             )
 
         vocab = self._create_vocabulary(self.filtered_input)[0]
@@ -1346,5 +1538,101 @@ class FLSA_V(FuzzyTM):
 
         return self._create_probability_matrices(
             algorithm='flsa-v', prob_topic_given_word_transpose = partition_matrix,
+            local_term_weights = sparse_document_term_matrix,
+            )
+
+class FLSA_E(FuzzyTM):
+    def __init__(
+            self,
+            input_file,
+            num_topics,
+            num_words = 10,
+            cluster_method = 'fcm',
+            min_count = 1,
+            window = 5,
+            vector_size = 500,
+            workers = 4,
+            ):
+        
+        self.vector_size = vector_size, #Somehow this is stored as a tuple
+        self.window = window,#Somehow this is stored as a tuple
+        self.min_count = min_count,#Somehow this is stored as a tuple
+        self.workers = workers#But this is NOT stored as a tuple
+        
+        super().__init__(
+            algorithm = 'flsa-e',
+            input_file=input_file,
+            num_topics=num_topics,
+            num_words=num_words,
+            cluster_method=cluster_method,
+            )
+
+    def get_word_embedding(
+            self, 
+            data,
+            vector_size,
+            window,
+            min_count,
+            workers,
+            ):
+        
+        self.model = Word2Vec(
+            sentences=data, 
+            vector_size=vector_size,
+            window=window,
+            min_count=min_count,
+            workers = workers,
+            )
+        
+        return self.model.wv.vectors
+    
+    def get_matrices(
+            self,
+            all_matrices = False,
+            ):
+        '''
+        Method to run after the FLSA_E class has been initialized to obtain the output matrices. 
+        
+        Parameters:
+             - all_matrices: boolean (default: False) - indicates whether all matrices should be returned or only the two default matrices. 
+        
+        Returns: 
+             - if all_matrices = False (default):
+                  - Numpy array: prob_word_given_topic
+                  - Numpy array: prob_topic_given_document
+            
+             - if all_matrices = True:
+                  - prob_word_i
+                  - prob_document_j
+                  - prob_topic_k
+                  - prob_document_and_topic
+                  - prob_document_given_topic
+                  - prob_word_given_document
+                  - prob_word_given_topic
+                  - prob_topic_given_document        
+        '''        
+        sparse_document_term_matrix = self._create_sparse_local_term_weights(
+            self._input_file,
+            self._vocabulary_size,
+            self._word_to_index,
+            )
+        
+        self.word_embedding = self.get_word_embedding(
+            data = self._input_file,
+            min_count= self.min_count[0],
+            vector_size = self.vector_size[0],
+            window = self.window[0],
+            workers = self.workers,
+            )
+                
+        partition_matrix = self._create_partition_matrix(
+            data = self.word_embedding,
+            number_of_clusters = self._num_topics,
+            method = self._cluster_method,
+            )
+               
+        return self._create_probability_matrices(
+            algorithm='flsa-e',
+            prob_topic_given_word_transpose = partition_matrix,
             local_term_weights = sparse_document_term_matrix,
             )

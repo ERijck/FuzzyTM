@@ -7,6 +7,7 @@ Created on Fri Oct 15 13:49:08 2021
 import math
 from collections import Counter
 import warnings
+import pickle
 import numpy as np
 import pandas as pd
 from scipy.sparse.linalg import svds
@@ -15,31 +16,38 @@ from pyfume import Clustering
 import gensim.corpora as corpora
 from gensim.models.coherencemodel import CoherenceModel
 from gensim.models import Word2Vec
-import pickle
 
 class FuzzyTM():
     """
     Parent class to train various FLSA-based topic models.
     """
     def __init__(
-            self, 
-            input_file, 
-            num_topics, 
-            algorithm, 
+            self,
+            input_file,
+            num_topics,
+            algorithm,
             num_words,
             cluster_method,
-            word_weighting='normal', 
+            word_weighting='normal',
             svd_factors=2,
+            vector_size = None,
+            window = None,
+            min_count = None,
+            workers = None,
             ):
         self.input_file = input_file #List in which each element is a list of tokens
-        self.algorithm = algorithm,
+        self.algorithm = algorithm
         self.num_topics = num_topics
         self.num_words = num_words
         self.word_weighting = word_weighting
         self.cluster_method = cluster_method
         self.svd_factors = svd_factors
         self._check_variables()
-        
+        self.vector_size = vector_size
+        self.window = window
+        self.min_count = min_count
+        self.workers = workers
+
         self._vocabulary, self._vocabulary_size = self._create_vocabulary(self.input_file)
         self._word_to_index, self._index_to_word = self._create_index_dicts(self._vocabulary)
         self._sum_words = self._create_sum_words(self.input_file)
@@ -85,7 +93,7 @@ class FuzzyTM():
                 ]:
             raise ValueError("Invalid word weighting method. Please choose between: 'entropy','idf','normal' and'probidf'")
         if self.cluster_method not in [
-                "fcm", 
+                "fcm",
                 "fst-pso",
                 "gk",
                 ]:
@@ -498,7 +506,7 @@ class FuzzyTM():
                 binary_sparse_dtm[doc_index,
                                   word_to_index[word]] = binary_document_counter[word]
         return binary_sparse_dtm
-    
+
     @staticmethod
     def _create_projected_data(
             algorithm,
@@ -667,15 +675,15 @@ class FuzzyTM():
                                  "'prob_topic_given_word_transpose' to run flsa-v")
             if local_term_weights is None:
                 raise ValueError("Please feed the method 'local_term_weights', to run flsa-v")
-        
+
         else:
             raise ValueError('Your algorithm is currently not supported')
 
     def _create_probability_matrices(
-            self, 
-            algorithm, 
+            self,
+            algorithm,
             prob_topic_given_document_transpose = None,
-            prob_topic_given_word_transpose = None, 
+            prob_topic_given_word_transpose = None,
             local_term_weights = None,
             global_term_weights = None,
             ):
@@ -723,7 +731,7 @@ class FuzzyTM():
                     'flsa-w',
                     ]:
                 self._prob_topic_k = self._create_prob_topic_k(
-                    prob_topic_given_word_transpose, 
+                    prob_topic_given_word_transpose,
                     self._prob_word_i,
                     )
         elif algorithm in [
@@ -742,7 +750,7 @@ class FuzzyTM():
             prob_document_given_topic = prob_document_and_topic / prob_document_and_topic.sum(axis=0)
             self._prob_word_given_document = np.asarray(global_term_weights / global_term_weights.sum(1))
             self._prob_word_given_topic = np.matmul(
-                self._prob_word_given_document.T, 
+                self._prob_word_given_document.T,
                 prob_document_given_topic,
                 )
             prob_topic_given_document = prob_topic_given_document_transpose.T
@@ -777,7 +785,7 @@ class FuzzyTM():
 
     def show_topics(
             self,
-            prob_word_given_topic = None, 
+            prob_word_given_topic = None,
             num_words = -1,
             index_to_word = None, representation = 'both',
             ):
@@ -881,7 +889,7 @@ class FuzzyTM():
             numpy.array : float
                 Array in which each row gives the topic embedding for the associated document.
         """
-        self._check_format_input_data()
+        self._check_variables()
         if prob_word_given_topic is None:
             prob_word_given_topic = self._prob_word_given_topic
         top_dist = []
@@ -891,7 +899,7 @@ class FuzzyTM():
         if method == 'topn':
             dictlist = self._create_dictlist_topn(
                 topn,
-                prob_word_given_topic, 
+                prob_word_given_topic,
                 self._index_to_word,
                 )
         else:
@@ -941,7 +949,7 @@ class FuzzyTM():
             highest_weight_indices = prob_word_given_topic[:,topic_index].argsort()[-topn:]
             for word_index in highest_weight_indices:
                 new_dict[index_to_word[word_index]] = prob_word_given_topic[
-                    word_index, 
+                    word_index,
                     topic_index,
                     ]
             top_dictionaries.append(new_dict)
@@ -990,9 +998,9 @@ class FuzzyTM():
                 i+=1
             top_list.append(new_dict)
         return top_list
-   
+
     def get_coherence_score(
-            self, 
+            self,
             input_file=None,
             topics=None,
             coherence = 'c_v',
@@ -1015,10 +1023,10 @@ class FuzzyTM():
              float
                  The coherence score.
         """
-        if input_file == None and topics == None:
+        if input_file is None and topics is None:
             input_file=self.input_file
             topics=self.show_topics(representation='words')
-        
+
         id2word = corpora.Dictionary(input_file)
         corpus = [id2word.doc2bow(text) for text in input_file]
         self.coherence_score = CoherenceModel(
@@ -1047,7 +1055,7 @@ class FuzzyTM():
              float
                  The diversity score.
         """
-        if topics == None:
+        if topics is None:
             topics = self.show_topics(representation='words')
         unique_words = set()
         total_words = 0
@@ -1058,9 +1066,9 @@ class FuzzyTM():
         return self.diversity_score
 
     def get_interpretability_score(
-            self, 
-            input_file=None, 
-            topics=None, 
+            self,
+            input_file=None,
+            topics=None,
             coherence='c_v',
             ):
         """''
@@ -1084,15 +1092,15 @@ class FuzzyTM():
              float
                  The interpretability score.
         """
-        if input_file == None and topics == None:
+        if input_file is None and topics is None:
             input_file=self.input_file
             topics=self.show_topics(representation='words')
-        if self.coherence_score == None:
+        if self.coherence_score is None:
             self.coherence_score = self.get_coherence_score(
-                input_file, 
+                input_file,
                 topics, coherence,
                 )
-        if self.diversity_score == None:
+        if self.diversity_score is None:
             self.diversity_score = self.get_diversity_score(topics)
         return self.coherence_score * self.diversity_score
 
@@ -1193,7 +1201,7 @@ class FuzzyTM():
                 The probabilities per topic.
         """
         return self._prob_topic_k
-    
+
     def save(
             self,
             filepath,
@@ -1205,7 +1213,7 @@ class FuzzyTM():
         ----------
              filepath : str
                 The directory in which the file should be stored,
-                either with or without 
+                either with or without
 
         Returns
         -------
@@ -1227,6 +1235,20 @@ class FuzzyTM():
             self,
             filepath,
             ):
+        """''
+        Loads the object from the drive, using the pickle library
+
+        Parameters
+        ----------
+             filepath : str
+                The directory in which the file should be stored,
+                either with or without
+
+        Returns
+        -------
+             float
+                 The interpretability score.
+        """
         if not isinstance(filepath, str):
             raise ValueError('Make sure that "filepath" has type "str"')
         if not filepath.endswith('.pickle'):
@@ -1242,7 +1264,7 @@ class FuzzyTM():
 class FLSA(FuzzyTM):
     """
     Algorithm to run the FLSA algorithm (see: https://tinyurl.com/mskjaeuu).
-    
+
     Parameters
         ----------
             input_file : list of lists of str
@@ -1263,105 +1285,19 @@ class FLSA(FuzzyTM):
                  The cluster algorithm to be used ('fcm', 'gk', 'fst-pso').
     """
     def __init__(
-            self, 
-            input_file, 
-            num_topics, 
-            num_words=10, 
+            self,
+            input_file,
+            num_topics,
+            num_words=10,
             word_weighting='normal',
-            svd_factors=2, 
+            svd_factors=2,
             cluster_method='fcm',
             ):
         super().__init__(
-            input_file=input_file, 
+            input_file=input_file,
             num_topics=num_topics,
             algorithm='flsa',
-            num_words=num_words, 
-            word_weighting = word_weighting,
-            cluster_method=cluster_method, 
-            svd_factors=svd_factors,
-            )
-
-    def get_matrices(self):
-        """
-        Method to obtain the matrices after the model has been initialized.
-
-        Returns
-        -------
-            numpy.array : float
-                The prbability of a word given a topic.
-            numpy.array : float
-                The prbability of a topic given a document.
-        """
-        sparse_document_term_matrix = self._create_sparse_local_term_weights(
-            self.input_file, 
-            self._vocabulary_size, 
-            self._word_to_index,
-            )
-        sparse_global_term_weighting = self._create_sparse_global_term_weights(
-            input_file = self.input_file, 
-            word_weighting = self.word_weighting,
-            vocabulary_size=self._vocabulary_size, 
-            sparse_local_term_weights = sparse_document_term_matrix,
-            index_to_word = self._index_to_word, 
-            word_to_index = self._word_to_index,
-            sum_words = self._sum_words,
-            )
-        projected_data = self._create_projected_data(
-            algorithm = 'flsa', 
-            sparse_weighted_matrix = sparse_global_term_weighting,
-            svd_factors = self.svd_factors,
-            )
-        partition_matrix = self._create_partition_matrix(
-            data = projected_data, 
-            number_of_clusters = self.num_topics,
-            method = self.cluster_method
-            )
-        return self._create_probability_matrices(
-            algorithm='flsa', 
-            prob_topic_given_document_transpose = partition_matrix,
-            global_term_weights = sparse_global_term_weighting,
-            )
-
-class FLSA_W(FuzzyTM):
-    """
-    Class to train the FLSA-W algorithm.
-
-    See: https://ieeexplore.ieee.org/abstract/document/9660139
-    
-    Parameters
-        ----------
-            input_file : list of lists of str
-                The input file used to initialize the model.
-            num_topics : int
-                The number of topics that the model should train.
-            num_words : int
-                 Indicates how many words per topic should be shown.
-            word_weighting : str
-                Indicates the method used for word_weighting. Choose from:
-                  - entropy
-                  - normal
-                  - idf
-                  - probidf
-            svd_factors : int
-                 The number of singular values to include.
-            cluster_method : str
-                 The cluster algorithm to be used ('fcm', 'gk', 'fst-pso').
-    """
-    def __init__(
-            self, 
-            input_file, 
-            num_topics, 
-            num_words = 10,
-            word_weighting = 'normal', 
-            svd_factors = 2, 
-            cluster_method = 'fcm',
-            ):
-        
-        super().__init__(
-            input_file=input_file, 
-            num_topics=num_topics,
-            algorithm='flsa-w',
-            num_words=num_words, 
+            num_words=num_words,
             word_weighting = word_weighting,
             cluster_method=cluster_method,
             svd_factors=svd_factors,
@@ -1379,31 +1315,117 @@ class FLSA_W(FuzzyTM):
                 The prbability of a topic given a document.
         """
         sparse_document_term_matrix = self._create_sparse_local_term_weights(
-            self.input_file, 
-            self._vocabulary_size, 
+            self.input_file,
+            self._vocabulary_size,
             self._word_to_index,
             )
         sparse_global_term_weighting = self._create_sparse_global_term_weights(
-            input_file = self.input_file, 
+            input_file = self.input_file,
             word_weighting = self.word_weighting,
-            vocabulary_size=self._vocabulary_size, 
+            vocabulary_size=self._vocabulary_size,
             sparse_local_term_weights = sparse_document_term_matrix,
-            index_to_word = self._index_to_word, 
+            index_to_word = self._index_to_word,
             word_to_index = self._word_to_index,
             sum_words = self._sum_words,
             )
         projected_data = self._create_projected_data(
-            algorithm = 'flsa-w', 
+            algorithm = 'flsa',
             sparse_weighted_matrix = sparse_global_term_weighting,
             svd_factors = self.svd_factors,
             )
         partition_matrix = self._create_partition_matrix(
-            data = projected_data, 
+            data = projected_data,
+            number_of_clusters = self.num_topics,
+            method = self.cluster_method
+            )
+        return self._create_probability_matrices(
+            algorithm='flsa',
+            prob_topic_given_document_transpose = partition_matrix,
+            global_term_weights = sparse_global_term_weighting,
+            )
+
+class FLSA_W(FuzzyTM):
+    """
+    Class to train the FLSA-W algorithm.
+
+    See: https://ieeexplore.ieee.org/abstract/document/9660139
+
+    Parameters
+        ----------
+            input_file : list of lists of str
+                The input file used to initialize the model.
+            num_topics : int
+                The number of topics that the model should train.
+            num_words : int
+                 Indicates how many words per topic should be shown.
+            word_weighting : str
+                Indicates the method used for word_weighting. Choose from:
+                  - entropy
+                  - normal
+                  - idf
+                  - probidf
+            svd_factors : int
+                 The number of singular values to include.
+            cluster_method : str
+                 The cluster algorithm to be used ('fcm', 'gk', 'fst-pso').
+    """
+    def __init__(
+            self,
+            input_file,
+            num_topics,
+            num_words = 10,
+            word_weighting = 'normal',
+            svd_factors = 2,
+            cluster_method = 'fcm',
+            ):
+
+        super().__init__(
+            input_file=input_file,
+            num_topics=num_topics,
+            algorithm='flsa-w',
+            num_words=num_words,
+            word_weighting = word_weighting,
+            cluster_method=cluster_method,
+            svd_factors=svd_factors,
+            )
+
+    def get_matrices(self):
+        """
+        Method to obtain the matrices after the model has been initialized.
+
+        Returns
+        -------
+            numpy.array : float
+                The prbability of a word given a topic.
+            numpy.array : float
+                The prbability of a topic given a document.
+        """
+        sparse_document_term_matrix = self._create_sparse_local_term_weights(
+            self.input_file,
+            self._vocabulary_size,
+            self._word_to_index,
+            )
+        sparse_global_term_weighting = self._create_sparse_global_term_weights(
+            input_file = self.input_file,
+            word_weighting = self.word_weighting,
+            vocabulary_size=self._vocabulary_size,
+            sparse_local_term_weights = sparse_document_term_matrix,
+            index_to_word = self._index_to_word,
+            word_to_index = self._word_to_index,
+            sum_words = self._sum_words,
+            )
+        projected_data = self._create_projected_data(
+            algorithm = 'flsa-w',
+            sparse_weighted_matrix = sparse_global_term_weighting,
+            svd_factors = self.svd_factors,
+            )
+        partition_matrix = self._create_partition_matrix(
+            data = projected_data,
             number_of_clusters = self.num_topics,
             method = self.cluster_method,
             )
         return self._create_probability_matrices(
-            algorithm='flsa-w', 
+            algorithm='flsa-w',
             prob_topic_given_word_transpose = partition_matrix,
             global_term_weights = sparse_global_term_weighting,
             )
@@ -1413,7 +1435,7 @@ class FLSA_V(FuzzyTM):
     Class to train the FLSA-V algorithm.
 
     See: https://ieeexplore.ieee.org/abstract/document/9660139
-    
+
     Parameters
         ----------
             input_file : list of lists of str
@@ -1429,11 +1451,11 @@ class FLSA_V(FuzzyTM):
                  The cluster algorithm to be used ('fcm', 'gk', 'fst-pso').
     """
     def __init__(
-            self, 
-            input_file, 
-            map_file, 
+            self,
+            input_file,
+            map_file,
             num_topics,
-            num_words = 10, 
+            num_words = 10,
             cluster_method='fcm',
             ):
         self.map_file = map_file
@@ -1448,19 +1470,19 @@ class FLSA_V(FuzzyTM):
             raise ValueError("map_file has no 'id' column")
 
         self.filtered_input = self._get_filtered_input(
-            input_file, 
+            input_file,
             self.map_file,
             )
         self.map_file = self._filter_map_file(
-            self.map_file, 
+            self.map_file,
             self.filtered_input,
             )
 
         super().__init__(
-            input_file=self.filtered_input, 
+            input_file=self.filtered_input,
             num_topics=num_topics,
             algorithm='flsa-v',
-            num_words=num_words, 
+            num_words=num_words,
             cluster_method=cluster_method,
             )
 
@@ -1496,7 +1518,8 @@ class FLSA_V(FuzzyTM):
 
     @staticmethod
     def _filter_map_file(
-            map_file, filtered_input,
+            map_file,
+            filtered_input,
             ):
         """
         Function to reduce words in map_file
@@ -1514,15 +1537,12 @@ class FLSA_V(FuzzyTM):
             The filtered map file.
 
         """
-        map_words = [word for word in map_file['label']]
+        map_words = map_file['label'].tolist()
         filtered_set = set()
         for text in filtered_input:
             filtered_set.update(set(text))
         filtered_list = list(filtered_set)
-
         intersect = list(np.intersect1d(map_words, filtered_list))
-
-        #return map_file[map_file.label.isin(intersect)]
         return map_file[map_file.id.isin(intersect)]
 
     @staticmethod
@@ -1565,24 +1585,48 @@ class FLSA_V(FuzzyTM):
                 The prbability of a topic given a document.
         """
         sparse_document_term_matrix = self._create_sparse_local_term_weights(
-            self.filtered_input, 
-            self._vocabulary_size, 
+            self.filtered_input,
+            self._vocabulary_size,
             self._word_to_index,
             )
 
         partition_matrix = self._create_partition_matrix(
-            data = self.coordinates, 
-            number_of_clusters = self.num_topics, 
+            data = self.coordinates,
+            number_of_clusters = self.num_topics,
             method = self.cluster_method,
             )
 
         return self._create_probability_matrices(
-            algorithm='flsa-v', 
+            algorithm='flsa-v',
             prob_topic_given_word_transpose = partition_matrix,
             local_term_weights = sparse_document_term_matrix,
             )
 
 class FLSA_E(FuzzyTM):
+    """
+    Class to train the FLSA-E algorithm.
+
+    See: https://tinyurl.com/5n8utppk
+
+    Parameters
+        ----------
+            corpus : list of lists of str
+                The input file used to initialize the model.
+            num_topics : int
+                The number of topics that the model should train.
+            num_words : int
+                Indicates how many words per topic should be shown.
+            cluster_method : str
+                The cluster algorithm to be used ('fcm', 'gk', 'fst-pso').
+            min_count : int
+                Ignores all words with total frequency lower than this.
+            window : int
+                Maximum distance between the current and predicted word within a sentence.
+            vector_size : int
+                Dimensionality of the word vectors.
+            workers : int
+                Use these many worker threads to train the model (=faster training with multicore machines).
+    """
     def __init__(
             self,
             input_file,
@@ -1594,84 +1638,86 @@ class FLSA_E(FuzzyTM):
             vector_size = 500,
             workers = 4,
             ):
-        
-        self.vector_size = vector_size, #Somehow this is stored as a tuple
-        self.window = window,#Somehow this is stored as a tuple
-        self.min_count = min_count,#Somehow this is stored as a tuple
-        self.workers = workers#But this is NOT stored as a tuple
-        
+
+        self.model=...
+        self.word_embedding=...
+
         super().__init__(
             algorithm = 'flsa-e',
             input_file=input_file,
             num_topics=num_topics,
             num_words=num_words,
-            cluster_method=cluster_method,            
+            cluster_method=cluster_method,
+            vector_size = vector_size,
+            window = window,
+            min_count = min_count,
+            workers = workers,
             )
 
     def get_word_embedding(
-            self, 
+            self,
             data,
             vector_size,
             window,
             min_count,
             workers,
             ):
-        
+        """
+            Method to train a word embedding on the corpus.
+
+            Parameters
+                ----------
+                    data : list of lists of str
+                        The input file used to initialize the model.
+                    min_count : int
+                        Ignores all words with total frequency lower than this.
+                    window : int
+                        Maximum distance between the current and predicted word within a sentence.
+                    vector_size : int
+                        Dimensionality of the word vectors.
+                    workers : int
+                        Use these many worker threads to train the model (=faster training with multicore machines).
+        """
         self.model = Word2Vec(
-            sentences=data, 
+            sentences=data,
             vector_size=vector_size,
             window=window,
             min_count=min_count,
             workers = workers,
             )
-        
+
         return self.model.wv.vectors
-    
+
     def get_matrices(
             self,
-            all_matrices = False,
             ):
         '''
-        Method to run after the FLSA_E class has been initialized to obtain the output matrices. 
-        
-        Parameters:
-             - all_matrices: boolean (default: False) - indicates whether all matrices should be returned or only the two default matrices. 
-        
-        Returns: 
-             - if all_matrices = False (default):
+        Method to run after the FLSA_E class has been initialized to obtain the output matrices.
+
+        Returns:
                   - Numpy array: prob_word_given_topic
                   - Numpy array: prob_topic_given_document
-            
-             - if all_matrices = True:
-                  - prob_word_i
-                  - prob_document_j
-                  - prob_topic_k
-                  - prob_document_and_topic
-                  - prob_document_given_topic
-                  - prob_word_given_document
-                  - prob_word_given_topic
-                  - prob_topic_given_document        
-        '''        
+        '''
         sparse_document_term_matrix = self._create_sparse_local_term_weights(
             self.input_file,
             self._vocabulary_size,
             self._word_to_index,
             )
-        
+
         self.word_embedding = self.get_word_embedding(
             data = self.input_file,
-            min_count= self.min_count[0],
-            vector_size = self.vector_size[0],
-            window = self.window[0],
+            min_count= self.min_count,
+            vector_size = self.vector_size,
+            window = self.window,
             workers = self.workers,
             )
-                
+
         partition_matrix = self._create_partition_matrix(
             data = self.word_embedding,
             number_of_clusters = self.num_topics,
             method = self.cluster_method,
             )
-               
+
         return self._create_probability_matrices(
             algorithm='flsa-e',
             prob_topic_given_word_transpose = partition_matrix,

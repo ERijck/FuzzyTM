@@ -1635,7 +1635,7 @@ class FLSA_E(FuzzyTM):
             cluster_method = 'fcm',
             min_count = 1,
             window = 5,
-            vector_size = 500,
+            vector_size = 20,
             workers = 4,
             ):
 

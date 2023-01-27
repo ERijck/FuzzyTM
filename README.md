@@ -122,6 +122,5 @@ Below is a description of the other parameters per algorithm.
  ## Dependencies
 numpy == 1.19.2 <br>
 pandas == 1.3.3 <br>
-sparsesvd == 0.2.2 <br>
 scipy == 1.5.2 <br>
 pyfume == 0.2.0 <br>

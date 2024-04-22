@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: FuzzyTM
-Version: 2.0.5
+Version: 2.0.6
 Summary: A Python package for Fuzzy Topic Models
 Home-page: https://github.com/ERijck/FuzzyTM
 Author: Emil Rijcken
@@ -133,6 +133,5 @@ Below is a description of the other parameters per algorithm.
  ## Dependencies
 numpy == 1.19.2 <br>
 pandas == 1.3.3 <br>
-sparsesvd == 0.2.2 <br>
 scipy == 1.5.2 <br>
 pyfume == 0.2.0 <br>

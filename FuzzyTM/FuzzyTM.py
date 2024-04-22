@@ -1215,10 +1215,6 @@ class FuzzyTM():
                 The directory in which the file should be stored,
                 either with or without
 
-        Returns
-        -------
-             float
-                 The interpretability score.
         """
         if not isinstance(filepath, str):
             raise ValueError('Make sure that "filepath" has type "str"')

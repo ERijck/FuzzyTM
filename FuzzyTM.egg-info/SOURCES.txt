@@ -8,3 +8,5 @@ FuzzyTM.egg-info/SOURCES.txt
 FuzzyTM.egg-info/dependency_links.txt
 FuzzyTM.egg-info/requires.txt
 FuzzyTM.egg-info/top_level.txt
+FuzzyTM/analysis/__init__.py
+FuzzyTM/analysis/topic_specificity.py

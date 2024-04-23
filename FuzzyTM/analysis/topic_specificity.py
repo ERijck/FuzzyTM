@@ -32,7 +32,7 @@ class TopicSpecificity:
         else:
             self.topics = topics
         self.data = data
-        self.word_dict, self.sorted_word_count = self.__get_sorted_word_count__(data)
+        self.word_dict, self.sorted_word_count = self._sorted_word_count__(data)
         self.sorted_counts = [tup[1] for tup in self.sorted_word_count]
         self.num_words = len(self.topics[0])
 
@@ -57,7 +57,7 @@ class TopicSpecificity:
             return (self.sorted_counts.index(self.word_dict[word])+1)
 
 
-    def get_word_rank(
+    def word_rank(
             self, word
             ):
         """
@@ -73,7 +73,7 @@ class TopicSpecificity:
         return next(i for i, (w, *_) in enumerate(self.sorted_word_count) if w == word)
 
 
-    def get_word_frequency(
+    def word_frequency(
             self, word
             ):
         """
@@ -89,7 +89,7 @@ class TopicSpecificity:
         return next(i for (w,i) in self.sorted_word_count if w == word)
 
 
-    def get_average_rank(self):
+    def average_rank(self):
         """
         Calculate the average rank of all words.
         
@@ -116,7 +116,7 @@ class TopicSpecificity:
         Returns:
             float: The average frequency of the words.
         """
-        return self.sorted_word_count[self.get_average_rank()][1]
+        return self.sorted_word_count[self.average_rank()][1]
   
 
     def topic_specificities_one_topic(
@@ -158,7 +158,7 @@ class TopicSpecificity:
         return sum(specificities)/len(specificities)
 
 
-    def get_std_topic_specificity_one_topic(
+    def standard_dev_topic_specificity_one_topic(
             self, topic_index, relative = True
             ):
         """
@@ -175,7 +175,7 @@ class TopicSpecificity:
         return statistics.stdev(specificities)
 
 
-    def get_topic_specificities_all_topics(
+    def topic_specificities_all_topics(
             self, relative = True
             ):
         """
@@ -193,7 +193,7 @@ class TopicSpecificity:
         return topic_list
 
 
-    def get_mean_topic_specificity_all_topics(
+    def mean_topic_specificity_all_topics(
             self, relative = True
             ):
         """
@@ -205,7 +205,7 @@ class TopicSpecificity:
         Returns:
             float: The mean specificity across all topics.
         """
-        topic_specificities = self.get_topic_specificities_all_topics(relative = relative)
+        topic_specificities = self.topic_specificities_all_topics(relative = relative)
         count = 0
         total_words = 0
         
@@ -236,7 +236,7 @@ class TopicSpecificity:
         return all_topics
 
 
-    def __get_sorted_word_count__(
+    def _sorted_word_count__(
             self, data
             ):
         """

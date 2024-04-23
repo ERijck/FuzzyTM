@@ -141,7 +141,7 @@ class TopicSpecificity:
         return word_specificities
 
 
-    def mean_specificity_one_topic(
+    def mean_topic_specificity_one_topic(
             self, topic_index, relative = True
             ):
         """
@@ -158,7 +158,7 @@ class TopicSpecificity:
         return sum(specificities)/len(specificities)
 
 
-    def standard_dev_topic_specificity_one_topic(
+    def standard_deviation_topic_specificity_one_topic(
             self, topic_index, relative = True
             ):
         """

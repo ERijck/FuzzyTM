@@ -1,11 +1,12 @@
 Metadata-Version: 2.1
 Name: FuzzyTM
-Version: 2.0.7
+Version: 2.0.8
 Summary: A Python package for Fuzzy Topic Models
 Home-page: https://github.com/ERijck/FuzzyTM
 Author: Emil Rijcken
 Author-email: emil.rijcken@gmail.com
 License: GNU General Public License v3.0
+Platform: UNKNOWN
 Description-Content-Type: text/markdown
 License-File: LICENSE
 
@@ -135,3 +136,5 @@ numpy == 1.19.2 <br>
 pandas == 1.3.3 <br>
 scipy == 1.5.2 <br>
 pyfume == 0.2.0 <br>
+
+
